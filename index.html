@@ -1329,11 +1329,29 @@ function placeOrder() {
     time: new Date().toLocaleString('zh-TW')
   };
 
+  // Save locally
   const orders = getOrders();
   orders.push(order);
   saveOrders(orders);
   saveCart({});
   updateCartUI();
+
+  // Send to Google Sheets (non-blocking)
+  const GS_URL = 'https://script.google.com/macros/s/AKfycbz4-TqUp9ADec2jiJV_4ekWQY-PfDJX0pSkcW8Nt0j0b2q6nr0eqg2Vp8tOqClfPkvckQ/exec';
+  fetch(GS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      id: order.id,
+      name: order.name,
+      phone: order.phone,
+      addr: order.addr,
+      items: order.items.map(i => i.name + '×' + i.qty).join(', '),
+      total: 'NT$' + order.total,
+      time: order.time
+    })
+  }).catch(() => {}); // Silent fail - order already saved locally
 
   document.getElementById('orderNoDisplay').textContent = `訂單編號：${orderNo}`;
   document.getElementById('formContent').classList.add('hidden');
@@ -1431,27 +1449,41 @@ function renderAdminDash() {
       </div>
     </div>`).join('');
 
-  // Orders
-  document.getElementById('orderCount').textContent = `共 ${orders.length} 筆`;
+  // Orders — load from Google Sheets
+  const GS_URL = 'https://script.google.com/macros/s/AKfycbz4-TqUp9ADec2jiJV_4ekWQY-PfDJX0pSkcW8Nt0j0b2q6nr0eqg2Vp8tOqClfPkvckQ/exec';
   const tbody = document.getElementById('ordersBody');
   const empty = document.getElementById('ordersEmpty');
-  if (orders.length === 0) {
-    tbody.innerHTML = '';
-    empty.style.display = 'block';
-  } else {
-    empty.style.display = 'none';
-    tbody.innerHTML = [...orders].reverse().map(o => `
-      <tr>
-        <td><code style="font-size:0.75rem">${o.id}</code></td>
-        <td>${o.name}</td>
-        <td>${o.phone}</td>
-        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.addr}">${o.addr}</td>
-        <td style="font-size:0.75rem">${o.items.map(i=>i.name+'×'+i.qty).join('<br>')}</td>
-        <td style="font-weight:700">NT$${o.total}</td>
-        <td><span class="status-badge ${o.status==='new'?'status-new':'status-paid'}">${o.status==='new'?'新訂單':'已付款'}</span></td>
-        <td style="font-size:0.75rem;white-space:nowrap">${o.time}</td>
-      </tr>`).join('');
-  }
+  document.getElementById('orderCount').textContent = '讀取中…';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--gray-400)">載入訂單中…</td></tr>';
+  empty.style.display = 'none';
+
+  fetch(GS_URL)
+    .then(r => r.json())
+    .then(gsOrders => {
+      document.getElementById('orderCount').textContent = `共 ${gsOrders.length} 筆`;
+      document.getElementById('statTotalOrders').textContent = gsOrders.length;
+      if (gsOrders.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+        tbody.innerHTML = [...gsOrders].reverse().map(o => `
+          <tr>
+            <td><code style="font-size:0.75rem">${o.id||''}</code></td>
+            <td>${o.name||''}</td>
+            <td>${o.phone||''}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.addr||''}">${o.addr||''}</td>
+            <td style="font-size:0.75rem">${(o.items||'').replace(/,\s*/g,'<br>')}</td>
+            <td style="font-weight:700">${o.total||''}</td>
+            <td><span class="status-badge status-new">新訂單</span></td>
+            <td style="font-size:0.75rem;white-space:nowrap">${o.time||''}</td>
+          </tr>`).join('');
+      }
+    })
+    .catch(() => {
+      document.getElementById('orderCount').textContent = '讀取失敗';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--danger)">無法連線到資料庫，請重新整理後台</td></tr>';
+    });
 }
 
 function resetVotes() {
@@ -1486,41 +1518,16 @@ function exportCSV() {
 function showToast(msg, type='') {
   const el = document.createElement('div');
   el.className = 'toast ' + type;
-  el.innerHTML = msg;
+  el.textContent = msg;
   const container = document.getElementById('toastContainer');
   container.appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(40px)'; el.style.transition = '0.3s'; setTimeout(()=>el.remove(), 300); }, 3000);
+  setTimeout(() => el.remove(), 3000);
 }
 
 // ============================================================
-// SECRET ADMIN ROUTE (type "admin" in URL hash)
+// SEED / INIT
 // ============================================================
-function checkRoute() {
-  const hash = location.hash.replace('#','');
-  if (hash === 'admin') { navigate('admin'); return; }
-  navigate('vote');
-}
-
-window.addEventListener('hashchange', () => {
-  const hash = location.hash.replace('#','');
-  if (hash === 'admin') navigate('admin');
-});
-
-// ============================================================
-// DEMO DATA (seed some initial votes so it looks populated)
-// ============================================================
-function seedIfEmpty() {
-  const votes = getVotes();
-  const total = Object.values(votes).reduce((a,b)=>a+b,0);
-  if (total === 0) {
-    // Seed some demo votes
-    votes.chia = 12;
-    votes.original = 18;
-    votes.lite = 9;
-    votes.choco = 15;
-    saveVotes(votes);
-  }
-}
+function seedIfEmpty() { /* no demo data - votes start at 0 */ }
 
 // ============================================================
 // INIT
