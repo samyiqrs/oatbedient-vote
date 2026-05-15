@@ -648,8 +648,8 @@
   <div class="section" id="vote-section">
     <!-- Voted banner -->
     <div class="voted-banner" id="votedBanner">
-      <h3>🎉 感謝你的投票！</h3>
-      <p>你的意見對我們非常重要。現在可以直接下單購買你喜愛的口味 ↓</p>
+      <h3>🎉 投票已成功記錄！</h3>
+      <p>歡迎下一位來投下你心目中的一票 ↓（同一支手機可重複投票）</p>
     </div>
 
     <div class="section-header">
@@ -973,8 +973,21 @@ function getVotes() {
   catch { return {chia:0,original:0,lite:0,choco:0}; }
 }
 function saveVotes(v) { localStorage.setItem('oat_votes', JSON.stringify(v)); }
-function getMyVote() { return localStorage.getItem('oat_my_vote') || null; }
-function setMyVote(id) { localStorage.setItem('oat_my_vote', id); }
+// my_vote 改成「短暫的視覺提示」，存記憶體不存 localStorage
+// 投完票 3 秒後自動清除 — 讓共用同一支手機的下一位可以直接投票
+let _myVoteHighlight = null;
+let _myVoteClearTimer = null;
+function getMyVote() { return _myVoteHighlight; }
+function setMyVote(id) {
+  _myVoteHighlight = id;
+  if (_myVoteClearTimer) clearTimeout(_myVoteClearTimer);
+  _myVoteClearTimer = setTimeout(() => {
+    _myVoteHighlight = null;
+    if (document.getElementById('page-vote') && document.getElementById('page-vote').classList.contains('active')) {
+      renderVotePage();
+    }
+  }, 3000);
+}
 function getOrders() {
   try { return JSON.parse(localStorage.getItem('oat_orders')) || []; }
   catch { return []; }
@@ -1122,7 +1135,7 @@ function renderVotePage() {
         <div class="product-name-en">${p.en}</div>
         <div class="product-desc">${p.desc}</div>
         <div class="product-price">NT$${p.price} <span>/ 盒（${p.spec}）</span></div>
-        ${hasVoted ? `
+        ${total > 0 ? `
         <div class="vote-section">
           <div class="vote-bar-row">
             <span class="vote-count">${count} 票</span>
@@ -1132,21 +1145,44 @@ function renderVotePage() {
             <div class="vote-bar-fill" style="background:${p.color};width:${pct}%"></div>
           </div>
         </div>
-        <button class="btn-vote ${isMyVote ? 'voted-me' : 'btn-voted-other'}" disabled style="${!isMyVote?'background:var(--gray-100);color:var(--gray-600)':'background:'+p.color+';color:white'}">
-          ${isMyVote ? '✓ 我投了這票' : '未選擇'}
-        </button>
-        ` : `
+        ` : ''}
         <button class="btn-vote" style="background:${p.color};color:white" onclick="castVote('${p.id}')">
-          ☝️ 投票給這款
+          ${isMyVote ? '✓ 投了這票！再投一次' : '☝️ 投票給這款'}
         </button>
-        `}
       </div>
     </div>`;
   }).join('');
 }
 
+// 集中票數的 GAS 端點
+const VOTES_GS_URL = 'https://script.google.com/macros/s/AKfycbza7_T12H06lLn0_0t2YDCSZrrCiCseNhsmi8KON_WcBNMxEnTFWLr1vRb77oKK5pQgdg/exec';
+
+// 從伺服器拉最新票數，覆蓋本地快取後重繪
+function syncVotesFromServer() {
+  return fetch(VOTES_GS_URL + '?type=votes')
+    .then(r => r.json())
+    .then(serverVotes => {
+      // 嚴格驗證：必須是包含 chia/original/lite/choco 至少一個 key 的物件
+      if (!serverVotes || Array.isArray(serverVotes) || serverVotes.error) return null;
+      const validKeys = ['chia','original','lite','choco'];
+      const hasValidKey = validKeys.some(k => Object.prototype.hasOwnProperty.call(serverVotes, k));
+      if (!hasValidKey) return null;
+
+      const merged = { chia: 0, original: 0, lite: 0, choco: 0 };
+      validKeys.forEach(k => { merged[k] = Number(serverVotes[k]) || 0; });
+      saveVotes(merged);
+
+      const votePage = document.getElementById('page-vote');
+      if (votePage && votePage.classList.contains('active')) renderVotePage();
+      const adminPage = document.getElementById('page-admin');
+      if (adminPage && adminPage.classList.contains('active') && sessionStorage.getItem('oat_admin') === '1') renderAdminDash();
+      return merged;
+    })
+    .catch(() => null);
+}
+
 function castVote(id) {
-  if (getMyVote()) return;
+  // 樂觀更新本地，立即視覺回饋
   const votes = getVotes();
   votes[id] = (votes[id] || 0) + 1;
   saveVotes(votes);
@@ -1154,6 +1190,21 @@ function castVote(id) {
   const p = PRODUCTS.find(x => x.id === id);
   showToast(`🗳️ 已投票給「${p.zh}」！`, 'success');
   renderVotePage();
+
+  // 送到 GAS（fire-and-forget，no-cors 模式無法讀取回應）
+  fetch(VOTES_GS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      kind: 'vote',
+      id: id,
+      time: new Date().toLocaleString('zh-TW')
+    })
+  }).catch(() => {});
+
+  // 3 秒後從伺服器重新拉一次，匯入別人的票
+  setTimeout(syncVotesFromServer, 3000);
 }
 
 // ============================================================
@@ -1552,6 +1603,8 @@ window.onload = function() {
   try { seedIfEmpty(); } catch(e) { console.warn('seedIfEmpty:', e); }
   try { updateCartUI(); } catch(e) { console.warn('updateCartUI:', e); }
   try { checkRoute(); } catch(e) { console.warn('checkRoute:', e); renderVotePage(); }
+  // 啟動時從伺服器同步集中票數
+  try { syncVotesFromServer(); } catch(e) { console.warn('syncVotesFromServer:', e); }
 };
 
 // Close modal on overlay click
