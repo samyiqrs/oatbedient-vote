@@ -1516,4 +1516,25 @@ function seedIfEmpty() {
     // Seed some demo votes
     votes.chia = 12;
     votes.original = 18;
-    votes.lite
+    votes.lite = 9;
+    votes.choco = 15;
+    saveVotes(votes);
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.onload = function() {
+  seedIfEmpty();
+  updateCartUI();
+  checkRoute();
+};
+
+// Close modal on overlay click
+document.getElementById('checkoutModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCheckout();
+});
+</script>
+</body>
+</html>
