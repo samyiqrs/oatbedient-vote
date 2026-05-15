@@ -154,12 +154,14 @@
     background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.12) 100%);
   }
   .product-card-top img {
-    width: 100%; height: 100%; object-fit: cover; object-position: center top;
+    width: 100%; height: 100%; object-fit: contain; object-position: center;
+    padding: 8px;
     transition: transform var(--transition);
   }
   .product-card:hover .product-card-top img { transform: scale(1.06); }
   .shop-card-img img {
-    width: 100%; height: 100%; object-fit: cover; object-position: center top;
+    width: 100%; height: 100%; object-fit: contain; object-position: center;
+    padding: 8px;
     transition: transform var(--transition);
   }
   .shop-card:hover .shop-card-img img { transform: scale(1.06); }
@@ -1338,7 +1340,7 @@ function placeOrder() {
   updateCartUI();
 
   // Send to Google Sheets (non-blocking)
-  const GS_URL = 'https://script.google.com/macros/s/AKfycbz4-TqUp9ADec2jiJV_4ekWQY-PfDJX0pSkcW8Nt0j0b2q6nr0eqg2Vp8tOqClfPkvckQ/exec';
+  const GS_URL = 'https://script.google.com/macros/s/AKfycbza7_T12H06lLn0_0t2YDCSZrrCiCseNhsmi8KON_WcBNMxEnTFWLr1vRb77oKK5pQgdg/exec';
   fetch(GS_URL, {
     method: 'POST',
     mode: 'no-cors',
@@ -1451,7 +1453,7 @@ function renderAdminDash() {
     </div>`).join('');
 
   // Orders — load from Google Sheets
-  const GS_URL = 'https://script.google.com/macros/s/AKfycbz4-TqUp9ADec2jiJV_4ekWQY-PfDJX0pSkcW8Nt0j0b2q6nr0eqg2Vp8tOqClfPkvckQ/exec';
+  const GS_URL = 'https://script.google.com/macros/s/AKfycbza7_T12H06lLn0_0t2YDCSZrrCiCseNhsmi8KON_WcBNMxEnTFWLr1vRb77oKK5pQgdg/exec';
   const tbody = document.getElementById('ordersBody');
   const empty = document.getElementById('ordersEmpty');
   document.getElementById('orderCount').textContent = '讀取中…';
@@ -1533,10 +1535,23 @@ function seedIfEmpty() { /* no demo data - votes start at 0 */ }
 // ============================================================
 // INIT
 // ============================================================
+function checkRoute() {
+  const hash = (location.hash || '').replace('#', '');
+  if (hash === 'admin') {
+    navigate('admin');
+  } else if (hash === 'shop') {
+    navigate('shop');
+  } else {
+    renderVotePage();
+  }
+}
+
+window.addEventListener('hashchange', checkRoute);
+
 window.onload = function() {
-  seedIfEmpty();
-  updateCartUI();
-  checkRoute();
+  try { seedIfEmpty(); } catch(e) { console.warn('seedIfEmpty:', e); }
+  try { updateCartUI(); } catch(e) { console.warn('updateCartUI:', e); }
+  try { checkRoute(); } catch(e) { console.warn('checkRoute:', e); renderVotePage(); }
 };
 
 // Close modal on overlay click
