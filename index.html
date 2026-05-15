@@ -732,6 +732,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           匯出 CSV
         </button>
+        <button class="btn-logout" style="border-color:var(--danger);color:var(--danger)" onclick="resetVotes()">🗑️ 清空投票</button>
         <button class="btn-logout" onclick="adminLogout()">登出</button>
       </div>
     </div>
@@ -1449,6 +1450,14 @@ function renderAdminDash() {
   }
 }
 
+function resetVotes() {
+  if (!confirm('確定要清空所有投票數據嗎？\n此操作無法復原，所有人的投票紀錄都會消失。')) return;
+  localStorage.removeItem('oat_votes');
+  localStorage.removeItem('oat_my_vote');
+  showToast('🗑️ 投票數據已清空', 'success');
+  renderAdminDash();
+}
+
 function exportCSV() {
   const orders = getOrders();
   if (orders.length === 0) { showToast('尚無訂單資料', 'error'); return; }
@@ -1503,25 +1512,4 @@ function seedIfEmpty() {
     // Seed some demo votes
     votes.chia = 12;
     votes.original = 18;
-    votes.lite = 9;
-    votes.choco = 15;
-    saveVotes(votes);
-  }
-}
-
-// ============================================================
-// INIT
-// ============================================================
-window.onload = function() {
-  seedIfEmpty();
-  updateCartUI();
-  checkRoute();
-};
-
-// Close modal on overlay click
-document.getElementById('checkoutModal').addEventListener('click', function(e) {
-  if (e.target === this) closeCheckout();
-});
-</script>
-</body>
-</html>
+    votes.lite
